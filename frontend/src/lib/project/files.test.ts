@@ -2,7 +2,7 @@ import { strToU8, zipSync } from "fflate"
 import { describe, expect, it } from "vitest"
 
 import { getBlob } from "./blobs"
-import { addFiles, addLanguagesFor, createFile, envOf, deletePath, ensureTournament, exportZip, importZip, isCpp, isText, languageOf, languagesOf, metasOf, needsLanguage, openArchive, packagesKind, projectSize, PROJECT_LIMIT, replaceProject, resetProject, startProject, STARTERS, stateOf, testPathOf, textOf, tournamentsOf } from "./project"
+import { addFiles, addLanguagesFor, createDir, createFile, envOf, deletePath, ensureTournament, exportZip, importZip, isCpp, isText, languageOf, languagesOf, metasOf, needsLanguage, openArchive, packagesKind, projectSize, PROJECT_LIMIT, renamePath, replaceProject, resetProject, startProject, STARTERS, stateOf, testPathOf, textOf, tournamentsOf } from "./project"
 import { ProjectStore } from "./store"
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13])
@@ -181,6 +181,21 @@ describe("project languages", () => {
     resetProject(s)
     expect(metasOf(s).size).toBe(0)
     expect(needsLanguage(s)).toBe(true)
+  })
+
+  it("a rename to another language's extension adds that language", () => {
+    const s = new ProjectStore(false)
+    startProject(s, "cpp")
+    renamePath(s, "main.cpp", "main.py")
+    expect(languagesOf(s)).toEqual(["cpp", "python"])
+    const t = new ProjectStore(false)
+    startProject(t, "python")
+    createDir(t, "src")
+    createFile(t, "src/a.txt", "")
+    renamePath(t, "src", "lib")
+    expect(languagesOf(t)).toEqual(["python"])
+    renamePath(t, "lib/a.txt", "lib/a.hpp")
+    expect(languagesOf(t)).toEqual(["python", "cpp"])
   })
 
   it("a C++ header added to a python project adds cpp", async () => {

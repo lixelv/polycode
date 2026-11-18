@@ -77,7 +77,7 @@ const en = {
   "editor.waitingProject": "Waiting for the session's project…",
   "editor.createFile": "Create a file to start.",
   // toasts & confirms
-  "toast.onlyPython": "Only Python, C++, HTML and JavaScript files run.",
+  "toast.notRunnable": "Only Python, C++, HTML and JavaScript files run.",
   "toast.badZip": "This file is not a readable .zip archive.",
   "toast.opened": "Opened {name}",
   "toast.reset": "The project was reset.",
@@ -155,6 +155,18 @@ const en = {
   "pkg.dialog.replaces": "{name} is already added; this replaces it.",
   "pkg.retry": "Retry {name}",
   "pkg.remove": "Remove {name}",
+  "cppPkg.repository": "Repository",
+  "cppPkg.version": "Version",
+  "cppPkg.error.network": "Network error: jsDelivr is unreachable",
+  "cppPkg.error.notFound": "{what} not found",
+  "cppPkg.error.http": "{what}: HTTP {status}",
+  "cppPkg.error.noVersions": "Repository has no versions: add one as owner/repo@tag",
+  "cppPkg.error.noHeaders": "The repository has no headers (.h, .hpp…)",
+  "cppPkg.error.tooLarge": "The repository is too large (over 2000 headers or 32 MB)",
+  "cpp.compiler.tooLong": "The C++ compiler took too long",
+  "cpp.compiler.failed": "C++ compiler failed",
+  "cpp.runner.crashed": "The C++ runner crashed.",
+  "run.pythonFailed": "Python failed to start: {message}",
   "cpkg.text": "Header-only C++ libraries from GitHub, served by jsDelivr. Each one is downloaded once and then served from the cache. The standard library is always available.",
   "cpkg.emptyText": "Add one to #include it in your code.",
   "cpkg.pinned": "pinned @{v}",
@@ -394,7 +406,7 @@ const ru: Record<MessageKey, string> = {
   "editor.readOnly": "Сессия только для просмотра: редактирует только владелец.",
   "editor.waitingProject": "Ждём проект сессии…",
   "editor.createFile": "Создайте файл, чтобы начать.",
-  "toast.onlyPython": "Запускаются только файлы Python, C++, HTML и JavaScript.",
+  "toast.notRunnable": "Запускаются только файлы Python, C++, HTML и JavaScript.",
   "toast.badZip": "Это не читаемый .zip-архив.",
   "toast.opened": "Открыт {name}",
   "toast.reset": "Проект сброшен.",
@@ -469,6 +481,18 @@ const ru: Record<MessageKey, string> = {
   "pkg.dialog.replaces": "{name} уже добавлена — она будет заменена.",
   "pkg.retry": "Повторить {name}",
   "pkg.remove": "Удалить {name}",
+  "cppPkg.repository": "Репозиторий",
+  "cppPkg.version": "Версия",
+  "cppPkg.error.network": "Ошибка сети: jsDelivr недоступен",
+  "cppPkg.error.notFound": "Не найдено: {what}",
+  "cppPkg.error.http": "{what}: HTTP {status}",
+  "cppPkg.error.noVersions": "У репозитория нет версий: укажите owner/repo@тег",
+  "cppPkg.error.noHeaders": "В репозитории нет заголовков (.h, .hpp…)",
+  "cppPkg.error.tooLarge": "Репозиторий слишком большой (больше 2000 заголовков или 32 МБ)",
+  "cpp.compiler.tooLong": "Компилятор C++ работал слишком долго",
+  "cpp.compiler.failed": "Сбой компилятора C++",
+  "cpp.runner.crashed": "Программа на C++ аварийно завершилась.",
+  "run.pythonFailed": "Python не запустился: {message}",
   "cpkg.text": "C++ библиотеки из одних заголовков с GitHub, через jsDelivr. Каждая скачивается один раз и дальше берётся из кэша. Стандартная библиотека доступна всегда.",
   "cpkg.emptyText": "Добавьте библиотеку, чтобы подключить её через #include.",
   "cpkg.pinned": "версия @{v}",
@@ -683,4 +707,5 @@ export function useI18n() {
   return { lang, t: translate }
 }
 
-document.documentElement.lang = current
+// Not in vitest, which imports this through modules that translate their errors.
+if (typeof document !== "undefined") document.documentElement.lang = current

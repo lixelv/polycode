@@ -212,7 +212,8 @@ export class RunnerClient implements ProgramRunner {
     try {
       return await new Promise<CheckOutcome>((resolve, reject) => {
         const timeout = () => reject(new Error("timeout"))
-        let timer = setTimeout(timeout, wasm ? timeoutMs + BACKSTOP_MS : timeoutMs)
+        // A backstop past the checker's own budget (which ends CHECK_MARGIN before the limit), so its results come first.
+        let timer = setTimeout(timeout, timeoutMs + BACKSTOP_MS)
         let kind: CheckTournament | null | undefined // the first event's: nothing else can set it
         const off = this.on((event) => {
           if (event.type === "tournament" && kind === undefined) {

@@ -440,7 +440,7 @@ export function Workspace({ page, mcpTab }: { page: PageProject | null; mcpTab?:
     if (!activeExists) return
     setView("editor")
     if (!runnable) {
-      toast.message(t("toast.onlyPython"))
+      toast.message(t("toast.notRunnable"))
       return
     }
     if (!canRun) return

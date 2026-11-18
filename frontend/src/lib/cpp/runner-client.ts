@@ -1,3 +1,4 @@
+import { translate } from "@/lib/i18n"
 import { cwdOf } from "@/lib/cpp/wasi"
 import CppRunWorker from "@/workers/cpp-run.worker?worker"
 import {
@@ -89,7 +90,7 @@ export class CppRunnerClient implements ProgramRunner {
       const { id, started } = this.running
       this.flush()
       this.restart()
-      this.emit({ type: "stderr", data: `\n${e.message || "The C++ runner crashed."}\n` })
+      this.emit({ type: "stderr", data: `\n${e.message || translate("cpp.runner.crashed")}\n` })
       this.emit({ type: "exit", id, code: 1, duration: (performance.now() - started) / 1000, reason: null })
     }
     this.worker = worker

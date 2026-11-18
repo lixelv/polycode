@@ -250,7 +250,7 @@ export function useRunner({ onRateLimited, onEvent, warm = true }: RunnerOptions
         if (!breakpoints) timers.current.timeout = window.setTimeout(() => stopWith("timeout"), RUN_TIMEOUT_SEC * 1000)
       } catch (err) {
         if (gen !== generation.current || current.current === null) return
-        finish({ code: null, duration: 0, reason: "error", message: `Python failed to start: ${(err as Error).message}` })
+        finish({ code: null, duration: 0, reason: "error", message: translate("run.pythonFailed", { message: (err as Error).message }) })
       }
     },
     [begin, finish, stopWith, setStatus],

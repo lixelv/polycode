@@ -51,6 +51,9 @@ except ImportError:  # the unit tests import the files directly
 MAX_MESSAGE = 200
 CHECK_LIMIT = 30  # seconds; the page stops a whole check after this
 TOURNAMENT_LIMIT = 120  # the same for a tournament's check
+# Kept back from the check's limit: a run's wait ends this long before it, so the page's
+# timer (which throws every result away) never fires first, however the timeouts add up.
+CHECK_MARGIN = 1.0
 MAX_TOURNAMENT_ID = 64
 
 _solution = ""
@@ -63,10 +66,15 @@ _measures: dict = {}
 
 
 class TimeLimitExceeded(TimeoutError):
-    def __init__(self, used: float, limit: float):
+    """``budget`` (the whole check's limit, seconds) is set when the check's time, not
+    ``limit``, stopped the run; ``ran`` is False when nothing was left to start it."""
+
+    def __init__(self, used: float, limit: float, budget: float | None = None, ran: bool = True):
         super().__init__(used, limit)
         self.used = used
         self.limit = limit
+        self.budget = budget
+        self.ran = ran
 
 
 class MemoryLimitExceeded(MemoryError):
@@ -176,6 +184,30 @@ def _deadline(ms: int) -> bool:
 _now = time.perf_counter
 
 
+def _left() -> float:
+    """Seconds a run may still wait: what is left of the check, less CHECK_MARGIN."""
+    return _check_limit - CHECK_MARGIN - (_now() - _check_started)
+
+
+def _wait(timeout: float | None) -> tuple[int, bool]:
+    """How long a run may take, in ms, and whether the check's budget set it: ``timeout``
+    capped by what is left of the check (all of that without ``timeout``). Past it the run
+    fails by time, so earlier results stay. Nothing left raises before the run starts."""
+    left = _left()
+    if timeout and timeout <= left:
+        return max(1, round(timeout * 1000)), False
+    if left < 0.001:
+        raise TimeLimitExceeded(0.0, float(timeout or 0), budget=float(_check_limit), ran=False)
+    return max(1, round(left * 1000)), True
+
+
+def _time_failure(used: float, timeout: float | None, limit: float, capped: bool) -> TimeLimitExceeded:
+    """The error of a run past its time: the check's budget's when that cut it first."""
+    if capped and timeout and used <= timeout:
+        return TimeLimitExceeded(float(used), float(timeout), budget=float(_check_limit))
+    return TimeLimitExceeded(float(max(used, limit)), float(limit))
+
+
 def _cancel_deadline() -> bool:
     """Cancels the timer; True if it fired. An interrupt that lands while
     cancelling counts as fired."""
@@ -205,6 +237,8 @@ def _execute(action, stdin: str, timeout: float | None, ram_usage: float | None)
             raise EOFError("the program asked for more input than the test gave")
         return line.rstrip("\n")
 
+    # Before anything is replaced: with no time left, the run does not start.
+    ms, capped = _wait(timeout) if timeout else (0, False)
     saved = builtins.input
     saved_stdin = sys.stdin
     started = None
@@ -217,7 +251,7 @@ def _execute(action, stdin: str, timeout: float | None, ram_usage: float | None)
             if ram_usage:
                 tracemalloc.start()
             if timeout:
-                _deadline(max(1, round(timeout * 1000)))
+                _deadline(ms)
             started = _now()
             with contextlib.redirect_stdout(out):
                 action()
@@ -240,7 +274,7 @@ def _execute(action, stdin: str, timeout: float | None, ram_usage: float | None)
         if timeout:
             _measures["time"] = _measures.get("time", 0.0) + used
     if timeout and (interrupted or used > timeout):
-        raise TimeLimitExceeded(float(max(used, timeout)), float(timeout))
+        raise _time_failure(used, timeout, timeout, capped)
     if ram_usage and peak > ram_usage * 1e6:
         raise MemoryLimitExceeded(float(peak), float(ram_usage * 1e6))
     return out.getvalue()
@@ -266,9 +300,16 @@ def _failure(err: BaseException, tests: str, isolated: bool = False) -> str:
         # Built only from numbers: the solution cannot pass text through these.
         try:
             used, limit = float(err.used), float(err.limit)
+            budget = getattr(err, "budget", None)
+            budget = None if budget is None else float(budget)
+            ran = getattr(err, "ran", True) is not False
         except BaseException:  # noqa: BLE001
             return type(err).__name__
         if isinstance(err, TimeLimitExceeded):
+            if budget is not None and not ran:
+                return _short(f"check time ran out before this test ({budget:g} s for the whole check)")
+            if budget is not None:
+                return _short(f"check time ran out: the run was cut after {used:.2f} s (its limit is {limit:g} s)")
             return _short(f"time limit {limit:g} s exceeded: {used:.2f} s")
         return _short(f"memory limit {limit / 1e6:g} MB exceeded: {used / 1e6:.1f} MB")
     # Fixed text or an integer: the program's output never gets here. A solution sharing
@@ -323,10 +364,9 @@ def _run_isolated(stdin: str = "", timeout: float | None = None, ram_usage: floa
 
 
 def _isolated(stdin: str, timeout: float | None, ram_usage: float | None, call: str = "") -> str:
-    """run() for a solution outside this interpreter (C++, a tournament's). Without
-    ``timeout`` it may use what is left of the check."""
-    ms = round(timeout * 1000) if timeout else round((_check_limit - (_now() - _check_started)) * 1000)
-    ms = max(1, ms)
+    """run() for a solution outside this interpreter (C++, a tournament's). It may wait
+    ``timeout``, never more than what is left of the check (see _wait)."""
+    ms, capped = _wait(timeout)
     result = _run_outside(stdin, ms, bool(ram_usage), *((call,) if call else ()))
     used = result["elapsed"]
     memory = result["memory"]
@@ -335,8 +375,7 @@ def _isolated(stdin: str, timeout: float | None, ram_usage: float | None, call: 
     if ram_usage:
         _measures["memory"] = max(_measures.get("memory", 0), memory)
     if result["timedOut"] or (timeout and used > timeout):
-        limit = timeout or ms / 1000
-        raise TimeLimitExceeded(float(max(used, limit)), float(limit))
+        raise _time_failure(used, timeout, timeout or ms / 1000, capped)
     if ram_usage and memory > ram_usage * 1e6:
         raise MemoryLimitExceeded(float(memory), float(ram_usage * 1e6))
     if result["failure"] == "output_limit":
@@ -385,12 +424,14 @@ def declarations(source: str, filename: str) -> types.ModuleType:
     return module
 
 
-def run_tests(project: str, solution: str, source: str, kind: str = "python", tournament: bool = False) -> list:
+def run_tests(project: str, solution: str, source: str, kind: str = "python", tournament: bool = False, prelude: float = 0.0) -> list:
     """Runs every test_* function of ``source`` against ``project/solution``.
     ``kind`` is the solution's language: "python" or "cpp". In a ``tournament`` (see
-    tournament_of) the first failure skips the rest and the project stays away from us."""
+    tournament_of) the first failure skips the rest and the project stays away from us.
+    ``prelude`` is how long the check already took before this (package installs, on the
+    page's clock too): it counts toward the check's limit."""
     global _solution, _check_started, _check_limit, _in_tournament
-    _check_started = _now()
+    _check_started = _now() - max(0.0, float(prelude))
     _check_limit = TOURNAMENT_LIMIT if tournament else CHECK_LIMIT
     _in_tournament = tournament
     _points.clear()
