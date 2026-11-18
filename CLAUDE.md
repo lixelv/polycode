@@ -61,7 +61,7 @@ sites. Do not set it on a real server.
   - The editor follows the file's document under its path (a reset or an opened archive puts new ids under the same paths).
 - **Languages** (`project.ts`): `state.languages` is `("python" | "cpp")[]`.
   - `languagesOf` reads it; an old project without it gets them from its files (`.py`; `.cpp .cc .cxx .h .hpp`), an empty one is python.
-  - `addLanguagesFor` adds a file's language in `createFile`, `addFiles` and `openArchive` (an archive replaces them with its own; none → python). Deleting a file never removes one.
+  - `addLanguagesFor` adds a file's language in `createFile`, `addFiles`, `renamePath` and `openArchive` (an archive replaces them with its own; none → python). Deleting a file never removes one.
   - An empty project without `languages` (`needsLanguage`: first start, Reset) shows `LanguageDialog` (Python or C++ card) only in our own local store, never to a session guest, even an admin standing in for the owner (`!isGuest`). `startProject` writes `languages` and the starter (`STARTERS`: `main.py`, `main.cpp`). Closing the dialog = Python. Reset deletes every file and `languages`, so it asks again.
   - The Python runtimes (runner warm-up via `useRunner({warm})`, Ruff) load only when the project is ready, has its language and includes python (`hasPython` in `App.tsx`, read on `structure` updates). A C++-only project makes no `/pyodide/` request until a `.py` file adds python. The tools worker is lazy (Python hints, flowchart).
 - **Binary files** (`lib/project/blobs.ts`):

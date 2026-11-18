@@ -751,13 +751,17 @@ export function renamePath(s: ProjectStore, from: string, to: string): (path: st
   s.structure.transact(() => {
     const metas = metasOf(s)
     const dirs = dirsOf(s)
+    const moved: string[] = []
     for (const key of [...metas.keys()]) {
       const next = map(key)
       if (next === key) continue
       const meta = metas.get(key)!
       metas.delete(key)
       metas.set(next, meta)
+      moved.push(next)
     }
+    // main.cpp renamed to main.py brings python, as a new file would.
+    addLanguagesFor(s, moved)
     for (const key of [...dirs.keys()]) {
       const next = map(key)
       if (next === key) continue
@@ -766,9 +770,9 @@ export function renamePath(s: ProjectStore, from: string, to: string): (path: st
     }
     // Folder roles move with their folders.
     const folders = foldersOf(s)
-    const moved = renameRules(folders.toJSON() as Record<string, string>, from, to)
-    for (const key of [...folders.keys()]) if (!(key in moved)) folders.delete(key)
-    for (const [key, role] of Object.entries(moved)) if (folders.get(key) !== role) folders.set(key, role)
+    const rules = renameRules(folders.toJSON() as Record<string, string>, from, to)
+    for (const key of [...folders.keys()]) if (!(key in rules)) folders.delete(key)
+    for (const [key, role] of Object.entries(rules)) if (folders.get(key) !== role) folders.set(key, role)
   })
   return map
 }
