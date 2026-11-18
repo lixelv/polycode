@@ -1,3 +1,4 @@
+import { translate } from "@/lib/i18n"
 import type { ProjectStore } from "@/lib/project/store"
 
 import type { CppPackageFiles } from "./client"
@@ -67,10 +68,10 @@ const CDN = "https://cdn.jsdelivr.net/gh"
 
 async function get(url: string, what: string) {
   const response = await fetch(url).catch(() => {
-    throw new Error("Network error: jsDelivr is unreachable")
+    throw new Error(translate("cppPkg.error.network"))
   })
-  if (response.status === 404) throw new Error(`${what} not found`)
-  if (!response.ok) throw new Error(`${what}: HTTP ${response.status}`)
+  if (response.status === 404) throw new Error(translate("cppPkg.error.notFound", { what }))
+  if (!response.ok) throw new Error(translate("cppPkg.error.http", { what, status: response.status }))
   return response
 }
 
@@ -82,16 +83,16 @@ export interface FetchedPackage {
 
 /** Resolves the version (unless given), lists the repository and downloads its headers. */
 export async function fetchCppPackage(repo: string, version: string | null): Promise<FetchedPackage> {
-  if (!version) version = ((await (await get(`${API}/${repo}/resolved`, "Repository")).json()) as { version?: string }).version ?? ""
-  if (!version) throw new Error("Repository has no versions: add one as owner/repo@tag")
-  const list = (await (await get(`${API}/${repo}@${version}?structure=flat`, "Version")).json()) as { files: { name: string; size: number }[] }
+  if (!version) version = ((await (await get(`${API}/${repo}/resolved`, translate("cppPkg.repository"))).json()) as { version?: string }).version ?? ""
+  if (!version) throw new Error(translate("cppPkg.error.noVersions"))
+  const list = (await (await get(`${API}/${repo}@${version}?structure=flat`, translate("cppPkg.version"))).json()) as { files: { name: string; size: number }[] }
   const sizes = new Map(list.files.map((f) => [f.name.replace(/^\//, ""), f.size]))
   const paths = [...sizes.keys()]
   const include = pickInclude(paths)
   const headers = headerFiles(paths, include)
-  if (!headers.length) throw new Error("The repository has no headers (.h, .hpp…)")
+  if (!headers.length) throw new Error(translate("cppPkg.error.noHeaders"))
   if (headers.length > MAX_FILES || headers.reduce((n, p) => n + (sizes.get(p) ?? 0), 0) > MAX_BYTES) {
-    throw new Error("The repository is too large (over 2000 headers or 32 MB)")
+    throw new Error(translate("cppPkg.error.tooLarge"))
   }
 
   const files: Record<string, string> = {}

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react"
 
+import { translate } from "@/lib/i18n"
 import CppWorker from "@/workers/cpp.worker?worker"
 import type { ProjectFiles } from "@/workers/protocol"
 
@@ -118,7 +119,7 @@ export class CppClient {
     clearTimeout(this.deadline)
     if (!this.busy) return
     const ms = this.busy.request.kind !== "lint" ? COMPILE_DEADLINE_MS : LINT_DEADLINE_MS
-    this.deadline = setTimeout(() => this.kill("The C++ compiler took too long"), ms)
+    this.deadline = setTimeout(() => this.kill(translate("cpp.compiler.tooLong")), ms)
   }
 
   /** Stops the worker and fails what it had; the next request starts a new one. */
@@ -152,7 +153,7 @@ export class CppClient {
     }
     worker.onerror = (event) => {
       event.preventDefault()
-      this.kill(event.message || "C++ compiler failed")
+      this.kill(event.message || translate("cpp.compiler.failed"))
     }
     return worker
   }
