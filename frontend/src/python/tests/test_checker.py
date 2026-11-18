@@ -824,7 +824,7 @@ class CheckBudget(unittest.TestCase):
         passed = [r for r in res if r["ok"]]
         self.assertGreater(len(passed), 20)
         failed = res[len(passed)]
-        self.assertTrue(failed["message"].startswith("time limit 5 s exceeded"), failed)
+        self.assertEqual(failed["message"], "check time ran out: the run was cut after 2.00 s (its limit is 5 s)")
         self.assertTrue(all(r.get("skipped") for r in res[len(passed) + 1 :]))
 
     def test_cpp_check_reports_each_test(self):
@@ -833,9 +833,9 @@ class CheckBudget(unittest.TestCase):
             res = checker.run_tests(project, "main.cpp", self.source(10, 4), kind="cpp")
         self.assertLess(self.clock, checker.CHECK_LIMIT)
         self.assertEqual(len(res), 10)
-        self.assertTrue(res[0]["ok"])
-        self.assertFalse(res[-1]["ok"])
-        self.assertTrue(res[-1]["message"].startswith("time limit 4 s exceeded"), res[-1])
+        self.assertEqual([r["ok"] for r in res], [True] * 8 + [False] * 2)
+        self.assertEqual(res[8]["message"], "check time ran out: the run was cut after 1.00 s (its limit is 4 s)")
+        self.assertEqual(res[9]["message"], "check time ran out before this test (30 s for the whole check)")
 
     def test_python_check_reports_each_test(self):
         # The page's deadline: cancelling it spends the program's 3.5 s, or the deadline if sooner.
@@ -857,9 +857,29 @@ class CheckBudget(unittest.TestCase):
             res = checker.run_tests(project, "main.py", self.source(10, 4))
         self.assertLess(self.clock, checker.CHECK_LIMIT)
         self.assertEqual(len(res), 10)
-        self.assertTrue(res[0]["ok"])
-        self.assertFalse(res[-1]["ok"])
-        self.assertTrue(res[-1]["message"].startswith("time limit 4 s exceeded"), res[-1])
+        self.assertEqual([r["ok"] for r in res], [True] * 8 + [False] * 2)
+        self.assertEqual(res[8]["message"], "check time ran out: the run was cut after 1.00 s (its limit is 4 s)")
+        self.assertEqual(res[9]["message"], "check time ran out before this test (30 s for the whole check)")
+
+    def test_nothing_left_runs_nothing(self):
+        self.outside(0.1)
+        self.clock = 0.0
+        with tempfile.TemporaryDirectory() as project:
+            res = checker.run_tests(project, "main.py", HEAD + "def test_a():\n    t.run()\n", tournament=True, prelude=200)
+        self.assertEqual(self.waits, [])
+        self.assertEqual(res[0]["message"], "check time ran out before this test (120 s for the whole check)")
+
+    def test_the_prelude_counts(self):
+        # Package installs before run_tests ran on the page's clock too.
+        self.outside(0.1)
+        with tempfile.TemporaryDirectory() as project:
+            checker.run_tests(project, "main.cpp", self.source(1, 2) + "def test_b():\n    t.run('')\n", kind="cpp", prelude=10)
+        self.assertEqual(self.waits[0], 2000)
+        self.assertLessEqual(self.waits[1], (checker.CHECK_LIMIT - checker.CHECK_MARGIN - 10) * 1000)
+
+    def test_a_forged_budget_error_says_only_numbers(self):
+        err = checker.TimeLimitExceeded(1.5, 4, budget="30 s; you passed", ran=True)
+        self.assertEqual(checker._failure(err, "<tests>"), "TimeLimitExceeded")
 
     def test_a_timeout_within_the_check_is_kept(self):
         self.outside(0.1)

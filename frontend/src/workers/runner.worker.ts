@@ -368,6 +368,7 @@ function runOutside(stdin: string, timeoutMs: number, traceMemory: boolean, call
  */
 async function check(id: number, files: ProjectFiles, solution: string, test: string, specs: string[], cpp = false) {
   if (!py) return
+  const begun = performance.now() // the page's timer runs from about here: the prelude below counts
   // First of all, before a solution can post anything (see the event).
   const found = polycode.checker.tournament_of(test)
   const declared = found?.toJs({ dict_converter: Object.fromEntries }) as (CheckTournament & { error?: string }) | undefined
@@ -396,7 +397,10 @@ async function check(id: number, files: ProjectFiles, solution: string, test: st
   }
   if (cpp || tournament) (self as { polycode_run_outside?: typeof runOutside }).polycode_run_outside = runOutside
   armInterrupts() // a check's time limit is an interrupt
-  const results = polycode.checker.run_tests.callKwargs("/home/pyodide/project", solution, test, cpp ? "cpp" : "python", { tournament: !!tournament })
+  const results = polycode.checker.run_tests.callKwargs("/home/pyodide/project", solution, test, cpp ? "cpp" : "python", {
+    tournament: !!tournament,
+    prelude: (performance.now() - begun) / 1000,
+  })
   const list = results.toJs({ dict_converter: Object.fromEntries }) as CheckResult[]
   results.destroy()
   post({ type: "checked", id, results: list })

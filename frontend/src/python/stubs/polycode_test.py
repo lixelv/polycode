@@ -17,6 +17,10 @@ class TimeLimitExceeded(TimeoutError):
     """Seconds the program took."""
     limit: float
     """The limit, in seconds."""
+    budget: float | None
+    """The whole check's limit (30 or 120 s) when the check's time ran out first, else None."""
+    ran: bool
+    """False when no time was left to start the program."""
 
 
 class MemoryLimitExceeded(MemoryError):

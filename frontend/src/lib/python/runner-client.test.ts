@@ -100,7 +100,7 @@ describe("RunnerClient", () => {
       const { outcome, worker } = await checking()
       const failed = expect(outcome).rejects.toThrow("timeout")
       reply(worker, { type: "tournament", tournament: null })
-      for (let s = 0; s < 31; s++) {
+      for (let s = 0; s < 36; s++) {
         reply(worker, { type: "tournament", tournament: { id: "forged", private: false } })
         await vi.advanceTimersByTimeAsync(1000)
       }
@@ -135,6 +135,23 @@ describe("RunnerClient", () => {
       await vi.advanceTimersByTimeAsync(31_000)
       reply(worker, { type: "checked", id, results: [] })
       await expect(outcome).resolves.toMatchObject({ results: [] })
+    })
+
+    it("lets an ordinary Python check fail a run by time before the page gives up", async () => {
+      vi.useFakeTimers()
+      const { outcome, worker, id } = await checking()
+      reply(worker, { type: "tournament", tournament: null })
+      await vi.advanceTimersByTimeAsync(31_000)
+      reply(worker, { type: "checked", id, results: [] })
+      await expect(outcome).resolves.toMatchObject({ results: [] })
+    })
+
+    it("still stops an ordinary Python check that never answers", async () => {
+      vi.useFakeTimers()
+      const { outcome } = await checking()
+      const failed = expect(outcome).rejects.toThrow("timeout")
+      await vi.advanceTimersByTimeAsync(36_000)
+      await failed
     })
 
     it("gives a tournament its longer limit", async () => {
