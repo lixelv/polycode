@@ -27,6 +27,7 @@ cd frontend && npx vitest run             # unit tests (project model, access, a
 cd frontend && npm run dev                # dev server, proxies /api to :8090
 /opt/homebrew/bin/python3.14 -m unittest discover -s frontend/src/python/tests   # checker and other Python sources (unittest only)
 cd backend && gofmt -w . && go vet ./... && go test ./...
+backend/e2e/run.sh                        # backend e2e: the real server binary vs throwaway Postgres + SeaweedFS in Docker
 ```
 
 `npm run dev` and `npm run build` first run `scripts/copy-pyodide.mjs`,
@@ -228,7 +229,7 @@ sites. Do not set it on a real server.
 - **`sealed`** (`FileMeta.sealed`): no document, no text, no access for anyone (`fileAccess` checks it before admin), not in runs, archives, duplicates or agent tools. A check fetches the text for itself (`sealedText`), which DevTools can see: hiding, not secrecy. `createFile`, `renamePath`, `addFiles` and agent writes take its path as free; the saver then asks the server to drop it. Reset and folder deletion leave it. Its manifest keeps the path from the copy.
 - **Limits**: 64 MB a project, 1 GB a user (`checkQuota`: stored objects plus URLs still out; a file moving between prefixes counts once). A delete frees no reservation, since its URL still works: replacing a big file can read as over the limit until the old URL expires, at most 5 minutes, and the saver retries.
 - **Local S3**: SeaweedFS in `docker-compose.yml` (`S3_DEV_BUCKET_ORIGIN` makes the bucket and its CORS). Production names its own through `S3_*`, with `S3_PUBLIC_ORIGIN` going into the CSP at container start (`security-headers.conf` is an nginx template); its bucket must be private with CORS GET, PUT, DELETE for the app's origin.
-- **Tests**: `S3_TEST_ENDPOINT` (+ `_ACCESS_KEY`, `_SECRET_KEY`, `_BUCKET`) and `TEST_DATABASE_URL` turn on the integration tests; run `go test -race -p 1 ./...` (packages apply the schema on open and would deadlock in parallel). `frontend/e2e/projects/run.sh` runs the browser scenarios; it needs `npm i --no-save --ignore-scripts puppeteer-core`.
+- **Tests**: `S3_TEST_ENDPOINT` (+ `_ACCESS_KEY`, `_SECRET_KEY`, `_BUCKET`) and `TEST_DATABASE_URL` turn on the integration tests; run `go test -race -p 1 ./...` (packages apply the schema on open and would deadlock in parallel). `frontend/e2e/projects/run.sh` runs the browser scenarios; it needs `npm i --no-save --ignore-scripts puppeteer-core`. `backend/e2e` builds `cmd/server` (with `-race`), starts it against `TEST_DATABASE_URL` and `S3_TEST_*` and drives it as browsers and agents do: HTTP with the cookie, WebSockets, presigned S3 URLs, `/mcp` (identity, proxy refusals, projects and the saver token, live sessions, MCP tabs); without them it skips. `backend/e2e/run.sh [go test flags]` starts the services in Docker and removes them afterwards.
 
 ## MCP (an agent beside the user)
 
