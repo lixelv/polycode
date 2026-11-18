@@ -50,12 +50,14 @@ SPIN = "for _ in range(3 * 10**8):\n    pass\n"  # ~4 s of work: a bounded stand
 
 
 class Limits(unittest.TestCase):
-    HOOKS = ("_deadline", "_now")
+    HOOKS = ("_deadline", "_now", "_check_limit")
 
     def setUp(self):
         self.saved = {name: getattr(checker, name, None) for name in self.HOOKS}
         self.timer = None
         checker._deadline = lambda ms: None
+        # run_direct runs outside run_tests: no check around it caps the timeout.
+        checker._check_limit = float("inf")
 
     def tearDown(self):
         for name, value in self.saved.items():
@@ -116,7 +118,7 @@ class Limits(unittest.TestCase):
 
     def test_time_limit_swallowed(self):
         # The program catches the interrupt and finishes anyway: the elapsed time still counts.
-        clock = itertools.chain([0.0], itertools.repeat(5.0))
+        clock = itertools.chain([0.0, 0.0], itertools.repeat(5.0))  # the cap's reading, the start
         checker._now = lambda: next(clock)
         solution = "try:\n    for _ in range(10**6):\n        pass\nexcept BaseException:\n    pass\n"
         with self.assertRaises(checker.TimeLimitExceeded):
@@ -777,6 +779,93 @@ class PlainChecks(unittest.TestCase):
     def test_no_points_without_any_points_call(self):
         res = self.check("def test_a(): pass\n", SOLUTION)
         self.assertNotIn("points", res[0])
+
+
+class CheckBudget(unittest.TestCase):
+    """An explicit timeout is capped by what is left of the check, so the tests' timeouts
+    cannot add up past the page's timer (which would lose every result)."""
+
+    HOOKS = ("_run_outside", "_now", "_deadline")
+
+    def setUp(self):
+        self.saved = {name: getattr(checker, name, None) for name in self.HOOKS}
+        self.clock = 0.0
+        self.waits = []
+        checker._now = lambda: self.clock
+
+    def tearDown(self):
+        for name, value in self.saved.items():
+            if value is None:
+                if hasattr(checker, name):
+                    delattr(checker, name)
+            else:
+                setattr(checker, name, value)
+
+    def outside(self, seconds):
+        """A page that runs a program taking ``seconds``, stopping it at the wait."""
+
+        def hook(stdin, ms, trace=False, call=""):
+            self.waits.append(ms)
+            spent = min(seconds, ms / 1000)
+            self.clock += spent
+            return {"stdout": "", "memory": 0, "timedOut": seconds > ms / 1000, "exitCode": 0, "failure": "", "elapsed": spent}
+
+        checker._run_outside = hook
+
+    @staticmethod
+    def source(count, timeout, head="import polycode_test as t\n"):
+        return head + "".join(f"@t.points(1)\ndef test_{i:02}():\n    t.run('', timeout={timeout})\n" for i in range(count))
+
+    def test_tournament_keeps_the_points_it_earned(self):
+        self.outside(4.5)
+        with tempfile.TemporaryDirectory() as project:
+            res = checker.run_tests(project, "main.py", self.source(30, 5, HEAD), tournament=True)
+        self.assertLess(self.clock, checker.TOURNAMENT_LIMIT)  # the page's timer never fires first
+        passed = [r for r in res if r["ok"]]
+        self.assertGreater(len(passed), 20)
+        failed = res[len(passed)]
+        self.assertTrue(failed["message"].startswith("time limit 5 s exceeded"), failed)
+        self.assertTrue(all(r.get("skipped") for r in res[len(passed) + 1 :]))
+
+    def test_cpp_check_reports_each_test(self):
+        self.outside(3.5)
+        with tempfile.TemporaryDirectory() as project:
+            res = checker.run_tests(project, "main.cpp", self.source(10, 4), kind="cpp")
+        self.assertLess(self.clock, checker.CHECK_LIMIT)
+        self.assertEqual(len(res), 10)
+        self.assertTrue(res[0]["ok"])
+        self.assertFalse(res[-1]["ok"])
+        self.assertTrue(res[-1]["message"].startswith("time limit 4 s exceeded"), res[-1])
+
+    def test_python_check_reports_each_test(self):
+        # The page's deadline: cancelling it spends the program's 3.5 s, or the deadline if sooner.
+        armed = []
+
+        def deadline(ms):
+            if ms:
+                armed.append(ms)
+                self.waits.append(ms)
+                return None
+            spent = min(3.5, armed.pop() / 1000)
+            self.clock += spent
+            return spent < 3.5
+
+        checker._deadline = deadline
+        with tempfile.TemporaryDirectory() as project:
+            with open(os.path.join(project, "main.py"), "w") as f:
+                f.write(QUIET)
+            res = checker.run_tests(project, "main.py", self.source(10, 4))
+        self.assertLess(self.clock, checker.CHECK_LIMIT)
+        self.assertEqual(len(res), 10)
+        self.assertTrue(res[0]["ok"])
+        self.assertFalse(res[-1]["ok"])
+        self.assertTrue(res[-1]["message"].startswith("time limit 4 s exceeded"), res[-1])
+
+    def test_a_timeout_within_the_check_is_kept(self):
+        self.outside(0.1)
+        with tempfile.TemporaryDirectory() as project:
+            checker.run_tests(project, "main.cpp", self.source(1, 2), kind="cpp")
+        self.assertEqual(self.waits, [2000])
 
 
 if __name__ == "__main__":

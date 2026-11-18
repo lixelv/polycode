@@ -51,6 +51,9 @@ except ImportError:  # the unit tests import the files directly
 MAX_MESSAGE = 200
 CHECK_LIMIT = 30  # seconds; the page stops a whole check after this
 TOURNAMENT_LIMIT = 120  # the same for a tournament's check
+# Kept back from the check's limit: a run's wait ends this long before it, so the page's
+# timer (which throws every result away) never fires first, however the timeouts add up.
+CHECK_MARGIN = 1.0
 MAX_TOURNAMENT_ID = 64
 
 _solution = ""
@@ -176,6 +179,18 @@ def _deadline(ms: int) -> bool:
 _now = time.perf_counter
 
 
+def _left() -> float:
+    """Seconds a run may still wait: what is left of the check, less CHECK_MARGIN."""
+    return _check_limit - CHECK_MARGIN - (_now() - _check_started)
+
+
+def _wait_ms(timeout: float | None) -> int:
+    """How long a run may take, in ms: ``timeout`` capped by what is left of the check
+    (all of that without ``timeout``). Past it the run fails by time, so earlier results stay."""
+    left = _left()
+    return max(1, round((min(timeout, left) if timeout else left) * 1000))
+
+
 def _cancel_deadline() -> bool:
     """Cancels the timer; True if it fired. An interrupt that lands while
     cancelling counts as fired."""
@@ -217,7 +232,7 @@ def _execute(action, stdin: str, timeout: float | None, ram_usage: float | None)
             if ram_usage:
                 tracemalloc.start()
             if timeout:
-                _deadline(max(1, round(timeout * 1000)))
+                _deadline(_wait_ms(timeout))
             started = _now()
             with contextlib.redirect_stdout(out):
                 action()
@@ -323,10 +338,9 @@ def _run_isolated(stdin: str = "", timeout: float | None = None, ram_usage: floa
 
 
 def _isolated(stdin: str, timeout: float | None, ram_usage: float | None, call: str = "") -> str:
-    """run() for a solution outside this interpreter (C++, a tournament's). Without
-    ``timeout`` it may use what is left of the check."""
-    ms = round(timeout * 1000) if timeout else round((_check_limit - (_now() - _check_started)) * 1000)
-    ms = max(1, ms)
+    """run() for a solution outside this interpreter (C++, a tournament's). It may wait
+    ``timeout``, never more than what is left of the check (see _wait_ms)."""
+    ms = _wait_ms(timeout)
     result = _run_outside(stdin, ms, bool(ram_usage), *((call,) if call else ()))
     used = result["elapsed"]
     memory = result["memory"]
